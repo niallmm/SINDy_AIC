@@ -5,6 +5,8 @@
 % by N. M. Mangan, J. N. Kutz, S. L. Brunton, and J. L. Proctor
 
 
+addpath('utils')
+addpath('models')
 changeplot
 clear all, close all, clc
 
@@ -16,70 +18,85 @@ plottag = 2; % for plotting measurements and cross validation plottag = 1
 
 numvalidation = 100;
 eps = 0.001; % noise
-%% generate Data
-polyorder = 5;  % search space up to fifth order polynomials
-usesine = 0;    % no trig functions
-laurent = 0;
 
+%% generate Data
 n = 2;          % 2D system
-    A = [-.1 2; -2 -.1];
+A = [-.1 2; -2 -.1];
 rhs = @(y)A*y.^3;   % ODE right hand side
 tspan=[0:.01:25];   % time span
 x0 = [2; 0];        % initial conditions
 options = odeset('RelTol',1e-10,'AbsTol',1e-10*ones(1,n));
 [t,x]=ode45(@(t,x)rhs(x),tspan,x0,options);  % integrate
 
-
-%% compute Derivative 
-eps = 0.001;      % noise strength
+% compute Derivative 
 for i=1:length(x)
     dx(i,:) = A*(x(i,:).^3)';
 end
-dx = dx + eps*randn(size(dx));   % add noise
+% add noise to the state variables
+rng(10);
+x = x + eps*randn(size(x));   
 
 %% pool Data  (i.e., build library of nonlinear time series)
+polyorder = 5;  % search space up to fifth order polynomials
+usesine = 0;    % no trig functions
+laurent = 0;
 Theta = poolData(x,n,polyorder,usesine, laurent);
 m = size(Theta,2);
 
-%% compute Sparse regression
-
-x0 = 2*rand(2,numvalidation);
-for ii = 1:length(x0)
-    [t,x]=ode45(@(t,x)rhs(x),tspan,x0(:,ii),options);  % integrate
-    xA{ii} = x;
-    xA{ii} = x + eps*randn(size(x));
-%     for i=1:length(x)
-%     dxt(:,i) = A*(x(i,:).^3)';
-%     end
-%     dxA{ii}= dxt' + eps*randn(size(dxt'));   % add noise
-end
-%%
 Thetalib.Theta = Theta;
 Thetalib.normTheta = 0;
 Thetalib.dx = dx;
 Thetalib.polyorder = polyorder;
 Thetalib.usesine = usesine;
 
-crossval.x0 = x0;
-crossval.tvec = t;
-crossval.xA = xA;
-crossval.options= options;
 
-lassovals.numlasso = 20;
-lassovals.lassostart = -4;
-lassovals.lassoend = 1;
+%% compute Sparse regression
 
-Lasso_CV =multiD_pareto_crossn(Thetalib,crossval,lassovals, plottag);
-                     
-savetB=Lasso_CV.tB;
-savexB =Lasso_CV.xB;
-abserror=Lasso_CV.abserror;
-RMSE = Lasso_CV.RSME;
-IC=Lasso_CV.IC;
-numcoeff = Lasso_CV.numcoeff;
-Xicomb = Lasso_CV.Xi;
-lambdavec = Lasso_CV.lambda;
+lambdavals.numlambda = 20;
+lambdavals.lambdastart = -4;
+lambdavals.lambdaend = 1;
+% find coefficient vectors
+[Xicomb, numcoeff, lambdavec] = multiD_Xilib(Thetalib, lambdavals);
 
-AIC_rel =cell2mat({IC.aic})-min(cell2mat({IC.aic}));
+% % display coefficients
+% for ii = 1:length(Xicomb)
+%     Xicomb{ii}
+% end
+
+%% Simulate time series for validation
+
+x0 = 10.^(-3 + (1+3)*rand(2,numvalidation));
+% the smaller initial conditions (10^-3) are necessary to produce
+% discrepencies in the data for models with lots of small coefficents 
+% that are fit to noise.
+
+for ii = 1:length(x0)
+    [t,x]=ode45(@(t,x)rhs(x),tspan,x0(:,ii),options);  % integrate
+    tA{ii} = t;
+    xA{ii} = x + eps*randn(size(x));
+end
+
+val.x0 = x0;
+val.tA = tA;
+val.xA = xA;
+val.options= options;
+
+%% Perform validation and calculate aic for each model
+clear abserror RMSE tB xB IC
+for nn = 1:length(Xicomb)
+    Xi = Xicomb{nn};
+    [error, RMSE1, savetB, savexB] = validateXi(Xi, Thetalib, val, plottag);
+    ICtemp = ICcalculations(error', numcoeff(nn), numvalidation);
+    abserror(:,nn) = error';
+    RMSE(:,nn) = RMSE1;
+    tB{nn} =savetB;
+    xB{nn} = savexB;
+    IC(nn) = ICtemp;
+end
+
+
+AIC_rel =cell2mat({IC.aic_c})-min(cell2mat({IC.aic_c}));
+% plot numterms vs AIC plot
 AnalyzeOutput
-
+rmpath('utils')
+rmpath('models')

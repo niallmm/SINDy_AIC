@@ -4,31 +4,26 @@
 % and information criteria"
 % by N. M. Mangan, J. N. Kutz, S. L. Brunton, and J. L. Proctor
 
-
+addpath('utils')
+addpath('models')
 changeplot
 clear all, close all, clc
 
 filename = 'SEIR';
-saveplotstag = 1; % save yes =1
-savetag = 1;
 plottag = 2; % for plotting measurements and cross validation plottag = 1
 % for output plots only plotag =2
 
+eps=  0.00025; % noise
+numvalidation = 100; % number of crossvalidation experiments
 
-
-%% 
+%% generate Data
 n = 3; % number of parameters
-% generate Data
-N  = 250; % number of time steps
-eps=  1; % noise
 
 % all others are zero
 % Transfer Parameters
 B_SE = 0.3;
 B_EI = 0.4;
 B_IR = 0.04;
-
-
 Ntot = 1e4; % total population
 
 % Initial Conditions
@@ -36,26 +31,30 @@ S(1) = 0.99*Ntot; % number of suceptibles in population
 E(1) = 0.01*Ntot;
 I(1) = 0;
 
-
+N  = 250; % number of time steps
 % disease tranfer model
 for ii =2:N
     S(ii) = S(ii-1) - B_SE*S(ii-1)*I(ii-1)/Ntot;
     E(ii) = E(ii-1) + B_SE*S(ii-1)*I(ii-1)/Ntot - B_EI*E(ii-1);
     I(ii) = I(ii-1) + B_EI*E(ii-1) - B_IR*I(ii-1);
+    % adding in the R data causes SINDy to fail.
 end
 
 % create x and dx matrices with all variables:
-x = [S(1:end-1)' E(1:end-1)' I(1:end-1)'];% R(1:end-1)'];
-% x = I(1:N-1);
-dx = [S(2:end)' E(2:end)' I(2:end)'];% R(2:end)'];
-
+x = [S(1:end-1)' E(1:end-1)' I(1:end-1)'];
+dx = [S(2:end)' E(2:end)' I(2:end)'];
+% add noise to state variables
+rng(10);
 x = x+eps*randn(size(x));
-figure(6)
-plot(x/Ntot, 'o')
-xlabel('time step')
-ylabel(['% of population size: ' num2str(Ntot)])
-legend('S', 'E', 'I', 'R')
-legend('boxoff')
+
+if plottag>=1
+    figure(6)
+    plot(x/Ntot, 'o')
+    xlabel('time step')
+    ylabel(['% of population size: ' num2str(Ntot)])
+    legend('S', 'E', 'I')
+    legend('boxoff')
+end
 
 %% pool Data
 polyorder = 2;  % search space up to 3rd order polynomials
@@ -64,71 +63,80 @@ laurent = 0;
 Theta = poolData(x,n,polyorder,usesine, laurent);
 m = size(Theta,2);
 
-% calculate cros validation data for new intial conditions.
-ncross = 100; % number of crossvalidation experiments
+% % % normalize the columns of Theta
+% for k=1:m
+%     normTheta(k) = norm(Theta(:,k));
+%     Theta(:,k) = Theta(:,k)/normTheta(k);
+% end
 
-x0cross = 0.5*rand(n,ncross)*Ntot;
-for jj = 1:ncross
+Thetalib.Theta = Theta;
+Thetalib.normTheta = 0;
+Thetalib.dx = dx;
+Thetalib.polyorder = polyorder;
+Thetalib.usesine = usesine;
+
+%% compute Sparse regression
+lambdavals.numlambda = 20;
+lambdavals.lambdastart = -10;
+lambdavals.lambdaend = 1;
+
+% find coefficient vectors
+[Xicomb, numcoeff, lambdavec] = multiD_Xilib(Thetalib, lambdavals);
+
+% display coefficients
+for ii = 1:length(Xicomb)
+    Xicomb{ii}
+end
+
+%% calculate validation data for new intial conditions.
+
+ x0cross = 10.^(-1 + (4+1)*rand(n,numvalidation));
+
+
+for jj = 1:numvalidation
     % initialize
     S = zeros(N,1); % susceptibles
     E = zeros(N,1); % Latent/exposed
     I = zeros(N,1); % infected
-  %  R = zeros(N,1); % recovered
+    
     % Initial Conditions
     S(1) = x0cross(1, jj); % number of suceptibles in population
     E(1) = x0cross(2, jj);
     I(1) = x0cross(3, jj);
- %   R(1) = x0(4, jj)*Ntot;
     
     for ii =2:N
         S(ii) = S(ii-1) - B_SE*S(ii-1)*I(ii-1)/Ntot;
         E(ii) = E(ii-1) + B_SE*S(ii-1)*I(ii-1)/Ntot - B_EI*E(ii-1);
         I(ii) = I(ii-1) + B_EI*E(ii-1) - B_IR*I(ii-1);
-   %     R(ii) = R(ii-1) + B_IR*I(ii-1);
     end
     % create x and dx matrices with all variables:
     x2= [S(1:end-1) E(1:end-1) I(1:end-1)];
-    xA{jj} = x2 +eps*rand(size(x2));
+    xA{jj} = x2 +eps*randn(size(x2));
     dxA{jj} = [S(2:end) E(2:end) I(2:end)]';
     
 end
+val.x0 = x0cross;
+val.tA = N;
+val.xA = xA;
+val.options= 0;
 
+%% Perform validation and calculate aic for each model
 
-
-%%
-% % normalize the columns of Theta
-for k=1:m
-    normTheta(k) = norm(Theta(:,k));
-    Theta(:,k) = Theta(:,k)/normTheta(k);
-end 
-%%
-% t = N; % for discrete time, feed in the number of steps.
-Thetalib.Theta = Theta;
-Thetalib.normTheta = normTheta;
-Thetalib.dx = dx;
-Thetalib.polyorder = polyorder;
-Thetalib.usesine = usesine;
-
-crossval.x0 = x0cross;
-crossval.tvec = N;
-crossval.xA = xA;
-crossval.options= 0;
-
-lassovals.numlasso = 20;
-lassovals.lassostart = -4;
-lassovals.lassoend = 4;
-
-Lasso_CV =multiD_pareto_crossn(Thetalib,crossval,lassovals, plottag);
-                     
-savetB=Lasso_CV.tB;
-savexB =Lasso_CV.xB;
-abserror=Lasso_CV.abserror;
-RMSE = Lasso_CV.RSME;
-IC=Lasso_CV.IC;
-numcoeff = Lasso_CV.numcoeff;
-Xicomb = Lasso_CV.Xi;
-lambdavec = Lasso_CV.lambda;
+clear abserror RMSE tB xB IC
+for nn = 1:length(Xicomb)
+    Xi = Xicomb{nn};
+    [error, RMSE1, savetB, savexB] = validateXi(Xi, Thetalib, val, plottag);
+    ICtemp = ICcalculations(error', numcoeff(nn), numvalidation);
+    abserror(:,nn) = error';
+    RMSE(:,nn) = RMSE1;
+    tB{nn} =savetB;
+    xB{nn} = savexB;
+    IC(nn) = ICtemp;
+end
 
 AIC_rel =cell2mat({IC.aic})-min(cell2mat({IC.aic}));
+% plot number of terms vs AIC plot
 AnalyzeOutput
 
+rmpath('utils')
+rmpath('models')

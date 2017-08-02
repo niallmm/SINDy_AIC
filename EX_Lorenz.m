@@ -4,40 +4,45 @@
 % and information criteria"
 % by N. M. Mangan, J. N. Kutz, S. L. Brunton, and J. L. Proctor
 
-
+addpath('utils')
+addpath('models')
 changeplot
 clear all, close all, clc
 
+
+
 filename = 'Lorenz';
-saveplotstag = 1; % save yes =1
-savetag = 1;
 plottag = 2; % for plotting measurements and cross validation plottag = 1
 % for output plots only plotag =2
 
-ncross = 100; % number of crossvalidation experiments
+numvalidation = 100; % number of crossvalidation experiments
 eps = 0.001; % noise
 %% generate Data
-
+n = 3;      % 3D system
 sigma = 10;  % Lorenz's parameters (chaotic)
 beta = 8/3;
 rho = 28;
-
-n = 3;
-
 x0=[-8; 8; 27];  % Initial condition
 
 % Integrate
 tspan=[.001:.001:100];
 N = length(tspan);
-options = odeset('RelTol',1e-12,'AbsTol',1e-5*ones(1,n));
+options = odeset('RelTol',1e-12,'AbsTol',1e-5*ones(1,n),'Events', @events_diverge);
 [t,x]=ode45(@(t,x) lorenz(t,x,sigma,beta,rho),tspan,x0,options);
 
-%% compute Derivative
+% compute Derivative
 
 for i=1:length(x)
     dx(i,:) = lorenz(0,x(i,:),sigma,beta,rho);
 end
-% dx = dx + eps*randn(size(dx));
+% add noise to the state variables
+rng(6);
+%NOTE: **** This is not the same noise instance as the simulation in the paper.
+% changing the noise initialization to other values sometimes
+%causes the AIC ranking to fail to score the correct model with the lowest
+%score (ie rng(9)). Sometimes there are other models that recieve supported
+% scores (as the example in the paper) We believe this is because the
+% validation time series extend beyond the Lyapunov time of the system (t = 5>1).
 x = x+eps*randn(size(x));
 
 %% pool Data  (i.e., build library of nonlinear time series)
@@ -46,44 +51,58 @@ usesine = 0;    % no trig functions
 laurent = 0;
 Theta = poolData(x,n,polyorder,usesine, laurent);
 m = size(Theta,2);
-%%
-% calculate cros validation data for new intial conditions.
 
-tspanx=[.001:.001:5];
-x0cross = 20*randn(n,ncross);
-for ii = 1:ncross
-    [t2,x2]=ode45(@(t,x) lorenz(t,x,sigma,beta,rho),tspanx,x0cross(:,ii),options);
-    xA{ii}= x2 + eps*rand(size(x2));
-end
-    
-%% compute Sparse regression
 Thetalib.Theta = Theta;
 Thetalib.normTheta = 0;
 Thetalib.dx = dx;
 Thetalib.polyorder = polyorder;
 Thetalib.usesine = usesine;
+    
+%% compute Sparse regression
+lambdavals.numlambda = 30;
+lambdavals.lambdastart = -6;
+lambdavals.lambdaend = 2;
 
-crossval.x0 = x0cross;
-crossval.tvec = tspanx;
-crossval.xA = xA;
-crossval.options= options;
+% find coefficient vectors
+[Xicomb, numcoeff, lambdavec] = multiD_Xilib(Thetalib, lambdavals);
 
-lassovals.numlasso = 30;
-lassovals.lassostart = -6;
-lassovals.lassoend = 2;
+% % display coefficients
+% for ii = 1:length(Xicomb)
+%     Xicomb{ii}
+% end
 
-Lasso_CV =multiD_pareto_crossn(Thetalib,crossval,lassovals, plottag);
-                     
-savetB=Lasso_CV.tB;
-savexB =Lasso_CV.xB;
-abserror=Lasso_CV.abserror;
-RMSE = Lasso_CV.RSME;
-IC=Lasso_CV.IC;
-numcoeff = Lasso_CV.numcoeff;
-Xicomb = Lasso_CV.Xi;
-lambdavec = Lasso_CV.lambda;
+%% calculate validation data for new intial conditions.
 
-AIC_rel =cell2mat({IC.aic})-min(cell2mat({IC.aic}));
+tspanx=[.001:.001:5];
+x0 = 10.^(-1 + (3+1)*rand(n,numvalidation));
+for ii = 1:numvalidation
+    [t2,x2]=ode45(@(t,x) lorenz(t,x,sigma,beta,rho),tspanx,x0(:,ii),options);
+    tA{ii} = t2;
+    xA{ii}= x2 + eps*randn(size(x2));
+end
+
+val.x0 = x0;
+val.tA = tA;
+val.xA = xA;
+val.options= options;
+
+%% Perform validation and calculate aic for each model
+clear abserror RMSE tB xB IC
+for nn = 1:length(Xicomb)
+    Xi = Xicomb{nn};
+    [error, RMSE1, savetB, savexB] = validateXi(Xi, Thetalib, val, plottag);
+    ICtemp = ICcalculations(error', numcoeff(nn), numvalidation);
+    abserror(:,nn) = error';
+    RMSE(:,nn) = RMSE1;
+    tB{nn} =savetB;
+    xB{nn} = savexB;
+    IC(nn) = ICtemp;
+end
+
+
+AIC_rel =cell2mat({IC.aic_c})-min(cell2mat({IC.aic_c}));
+% plot numterms vs AIC plot
 AnalyzeOutput
 
-
+rmpath('utils')
+rmpath('models')

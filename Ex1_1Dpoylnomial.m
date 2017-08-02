@@ -10,16 +10,19 @@
 % combinatorial least squares regression)
 % 3) performs combinatorial L2 regression and alternating L2 and
 % thresholding
-% 4) calls functions to cross-validate and calculate IC for all produced models
+% 4) calls functions to validate and calculate IC for all produced models
 
+
+addpath('utils')
+addpath('models')
 changeplot
 clear all, close all, clc
 
 filename = '1Dpolynomial';
 
-saveplotstag = 1; % save yes =1
+saveplotstag = 0; % save yes =1
 savetag = 1;
-plottag = 2; % for plotting measurements and cross validation plottag = 1
+plottag = 2; % for plotting measurements and validation plottag = 1
 % for output plots only plotag =2
 % generate Data
 polyorder = 5;  % search space up to sixth order polynomials
@@ -30,7 +33,7 @@ eps = 0.001; % low noise
 
 % number of crossvalidations
 numvalidation = 100;
-tspan_t = 0:0.1:5;
+tspan_t = 0:0.25:5;
 
 % model
 Xitrue = [0 1 0 -0.2 -0.1 0]'; % define coefficients up to 5th order
@@ -43,8 +46,8 @@ x0 = [0.1, 0.5, 5];   % initial conditions
 options = odeset('RelTol',1e-10,'AbsTol',1e-10*ones(1,n));
 t = [];
 x = [];
-for kk = 1:length(x0)
-    [t1,x1]=ode45(@(t,x)rhs(x),tspan,x0(kk),options);  % integrate
+for nn = 1:length(x0)
+    [t1,x1]=ode45(@(t,x)rhs(x),tspan,x0(nn),options);  % integrate
     t = [t; t1];
     x = [x; x1];
 end
@@ -53,28 +56,40 @@ end
 for i=1:length(x)
     dx(i,:) = rhs(x(i,:));
 end
+
+rng(10);
 % add noise
 noisevec = eps*randn(size(x));
 x = x + noisevec;
 
-if plottag == 1
+% simulate time series for validation
+x0test = logspace(-3,0.5, numvalidation);
+for nn = 1:numvalidation
+    [tA, xA]=ode45(@(t,x)rhs(x),tspan_t,x0test(:,nn),options);  % integrate
+    savetA{nn} = tA;
+    savexA{nn} = xA + eps*randn(size(xA));
+end
+% save into a structure to use in functions
+val.x0 = x0test;
+val.tA = savetA;
+val.xA = savexA;
+val.options= options;
 
-end
-% simulate time series for cross validation
-x0test = logspace(-2,2, numvalidation);
-for kk = 1:numvalidation
-    [tA, xA]=ode45(@(t,x)rhs(x),tspan_t,x0test(:,kk),options);  % integrate
-    savetA{kk} = tA;
-    savexA{kk} = xA + eps*randn(size(xA));
-end
- %% % pool Data  (i.e., build library of nonlinear time series)
+%% % pool Data  (i.e., build library of nonlinear time series)
 Theta = poolData(x,n,polyorder,usesine,0);
 m = size(Theta,2);
+
+Thetalib.Theta = Theta;
+Thetalib.normTheta = 0;
+Thetalib.dx = dx;
+Thetalib.polyorder = polyorder;
+Thetalib.usesine = usesine;
+
 %% screening permutation matrix
 permM = []; numterms=[];
-for kk = 1:m
-    permM = [permM; permpos(kk,m)];
-    numterms = [numterms; kk*ones(nchoosek(m,kk),1)];
+for nn = 1:m
+    permM = [permM; permpos(nn,m)];
+    numterms = [numterms; nn*ones(nchoosek(m,nn),1)];
 end
 [tf index] = ismember(permM, [0 1 0 1 1 0], 'rows');
 correct = find(index);
@@ -85,48 +100,49 @@ correct = find(index);
     Thetascreen = Theta*diag(permM(ll,:));
      Xiperm(:,ll) = Thetascreen\dx;
  end
-% least square permuted Cross-validation
+% least square permuted validation
 for mm = 1:numperms
-[LSPermute_abserror{mm}, RMSE, savetB, savexB] = ...
-crossvalidateXi(Xiperm(:,mm), rhs, tspan_t, x0test, polyorder, usesine, ...
-options, plottag, savetA, savexA);
-IC = ICcalculations(LSPermute_abserror{mm}, numterms(mm), numvalidation);
+[abserror, RMSE, savetB, savexB] = validateXi(Xiperm(:,mm), Thetalib, val, plottag);
+LSPermute_abserror{mm} = abserror;
+IC = ICcalculations(abserror', numterms(mm), numvalidation);
 LSPermuteaic_c(mm) = IC.aic_c;
 end
 LSPermuteaic_c_rel = LSPermuteaic_c-min(LSPermuteaic_c);
-%%
-fulAIC_rel = figure(3);
-plot(numterms, LSPermuteaic_c_rel, 'ok')
-hold on
-zoomAIC_rel = figure(4);
-plot(numterms, LSPermuteaic_c_rel, 'ok')
-hold on
+%% plot permuations
+if plottag>1
+    fulAIC_rel = figure(3);
+    plot(numterms, LSPermuteaic_c_rel, 'ok')
+    hold on
+    zoomAIC_rel = figure(4);
+    plot(numterms, LSPermuteaic_c_rel, 'ok')
+    hold on
+end
 
 %% compute Sparse regression
-Thetalib.Theta = Theta;
-Thetalib.normTheta = 0;
-Thetalib.dx = dx;
-Thetalib.polyorder = polyorder;
-Thetalib.usesine = usesine;
 
-crossval.x0 = x0test;
-crossval.tvec = tspan_t;
-crossval.xA = savexA;
-crossval.options= options;
+lambdavals.numlambda = 100;
+lambdavals.lambdastart = -6;
+lambdavals.lambdaend = 1;
+% find coefficient vectors
+[Xicomb, numcoeff, lambdavec] = multiD_Xilib(Thetalib, lambdavals);
 
-lassovals.numlasso = 100;
-lassovals.lassostart = -6;
-lassovals.lassoend = 1;
-[Lasso_CV] = multiD_pareto_crossn(Thetalib,crossval,lassovals, plottag);
+%% Perform validation and calculate aic for each model
+clear abserror RMSE tB xB IC
+for nn = 1:length(Xicomb)
+    Xi = Xicomb{nn};
+    [error, RMSE1, savetB, savexB] = validateXi(Xi, Thetalib, val, plottag);
+    ICtemp = ICcalculations(error', numcoeff(nn), numvalidation);
+    abserror(:,nn) = error';
+    RMSE(:,nn) = RMSE1;
+    tB{nn} =savetB;
+    xB{nn} = savexB;
+    IC(nn) = ICtemp;
+end
 
-savetB=Lasso_CV.tB;
-savexB =Lasso_CV.xB;
-abserror=Lasso_CV.abserror;
-RMSE = Lasso_CV.RSME;
-IC=Lasso_CV.IC;
-numcoeff = Lasso_CV.numcoeff;
-Xicomb = Lasso_CV.Xi;
-lambdavec = Lasso_CV.lambda;
 
-AIC_rel =cell2mat({IC.aic})-min(cell2mat({IC.aic}));
+AIC_rel =cell2mat({IC.aic_c})-min(cell2mat({IC.aic_c}));
+% plot numterms vs AIC plot
 AnalyzeOutput
+
+rmpath('utils')
+rmpath('models')

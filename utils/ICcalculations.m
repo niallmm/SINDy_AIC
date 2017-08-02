@@ -4,10 +4,9 @@ function [IC] = ICcalculations(abserror, p, N)
 % number of parameters (or library functions), p
 % N number of data points (# time series)
 
-
 % loglikelyhood assuming normally destributed error 
-logL = -N*log(abserror'*abserror/N)/2; 
-errorout =abserror'*abserror/N
+logL = -N*log(abserror'*abserror/N)/2;
+errorout =abserror'*abserror/N;
 if p>0
 aic = -2*logL + 2*p;
 aic_c = aic + 2*p*(p+1)/(N-p-1);
@@ -23,10 +22,10 @@ IC.aic_c= aic_c;
 %stop
 
 
-elseif p==0 % put in NaN when there are zero terms in the eqn.
-IC.aic = NaN;
-IC.bic = NaN;
-IC.aic_c = NaN;
+elseif p==0 % calculate with hard p=0 to avoid divergence.
+IC.aic =-2*logL;
+IC.bic = -2*logL;
+IC.aic_c = -2*logL;
 
 else
     error('negative number of parameters?')
