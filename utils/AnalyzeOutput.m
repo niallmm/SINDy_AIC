@@ -22,7 +22,7 @@ if plottag >=1
 
     %%
     figure(2)
-    plot(numcoeff, cell2mat({IC.aic}), 'o')
+    plot(numcoeff, cell2mat({IC.aic_c}), 'o')
     xlabel('number of terms')
     ylabel('AICc')
     
@@ -41,7 +41,7 @@ if plottag >=1
 end
 
 %% Analyze results
-minind = find(min(cell2mat({IC.aic})) == cell2mat({IC.aic}), 1, 'first');
+minind = find(min(cell2mat({IC.aic_c})) == cell2mat({IC.aic_c}), 1, 'first');
 x1coeff = Xicomb{minind}
 mincoeff = numcoeff(minind);
 

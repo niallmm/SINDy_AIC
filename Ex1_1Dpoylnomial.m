@@ -20,8 +20,6 @@ clear all, close all, clc
 
 filename = '1Dpolynomial';
 
-saveplotstag = 0; % save yes =1
-savetag = 1;
 plottag = 2; % for plotting measurements and validation plottag = 1
 % for output plots only plotag =2
 % generate Data
@@ -130,6 +128,7 @@ lambdavals.lambdaend = 1;
 clear abserror RMSE tB xB IC
 for nn = 1:length(Xicomb)
     Xi = Xicomb{nn};
+    clear error RMSE1 savetB savexB
     [error, RMSE1, savetB, savexB] = validateXi(Xi, Thetalib, val, plottag);
     ICtemp = ICcalculations(error', numcoeff(nn), numvalidation);
     abserror(:,nn) = error';

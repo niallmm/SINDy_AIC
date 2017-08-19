@@ -17,10 +17,7 @@ savetag = 1; % save everything (including plots if turned on)
 plottag = 0;
 
 %NOTE: **** the noise instance for this code is not the same as that in the
-%paper, however the trends are the same. In this case all the other models
-%have been pushed out of the "supported" region by around 60 validation
-%time-series instances. To watch this progression you may want to add
-%other values to the nvalsweep vector between 4 and 60
+%paper, however the trends are the same. 
 
 nvalsweep = [2 4 60 80 100];
 
@@ -42,7 +39,7 @@ for i=1:length(x_nonoise)
     dx(i,:) = lorenz(0,x_nonoise(i,:),sigma,beta,rho);
 end
 
-rng(9); %initialize random number generator to the same place 
+rng(10); %initialize random number generator to the same place 
 % measurement error value
 eps=0.5; 
 x = x_nonoise+eps*randn(size(x_nonoise));
@@ -61,29 +58,26 @@ lambdavals.numlambda = 30;
 lambdavals.lambdastart = -6;
 lambdavals.lambdaend = 2;
 
-% make validation 
+% simulate validation time series
 x0val_all = 10.^(-1 + (2+2)*rand(n,max(nvalsweep)));
+for ii = 1:max(nvalsweep)
+        [t2,x2]=ode45(@(t,x) lorenz(t,x,sigma,beta,rho),tspanx,x0val_all(:,ii),options);
+        tA{ii} = t2;
+        % add noise to validation time series
+        xA{ii}= x2+ eps*randn(size(x2));
+end
 
 for i1 = 1:length(nvalsweep)
     
     nval = nvalsweep(i1); % number of validation instances
-    
     filename = sprintf('Lorenz_numcross%d_eps%f', nval,eps);
-    
+    x0val = x0val_all(:,1:nval);
     % take subset of time series
-    clear x0val
-    x0val=  x0val_all(:,1:nval);
-    
-    for ii = 1:nval
-        [t2,x2]=ode45(@(t,x) lorenz(t,x,sigma,beta,rho),tspanx,x0val(:,ii),options);
-        tA{ii} = t2;
-        % add noise to validation time series
-        xA{ii}= x2+ eps*randn(size(x2));
-    end
+
     val.x0 = x0val;
-    val.tA = tA;
+    val.tA = tA(1:nval);
     val.options= options;
-    val.xA = xA;
+    val.xA = xA(1:nval);
     
     % build library
     Theta = poolData(x,n,polyorder,usesine, laurent);
@@ -102,6 +96,7 @@ for i1 = 1:length(nvalsweep)
     clear abserror RMSE tB xB IC AIC_rel
     for nn = 1:length(Xicomb)
         Xi = Xicomb{nn}
+        clear error RMSE1 savetB savexB
         [error, RMSE1, savetB, savexB] = validateXi(Xi, Thetalib, val, plottag);
         ICtemp = ICcalculations(error', numcoeff(nn), nval);
         abserror(:,nn) = error';

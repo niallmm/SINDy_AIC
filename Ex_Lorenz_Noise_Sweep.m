@@ -19,12 +19,11 @@ mkdir(savedir1)
 savetag = 1; % save everything (including plots if turned on)
 plottag = 0;
 
-
-
+%NOTE: **** the noise instance for this code is not the same as that in the
+%paper, however the trends are similar. 
 
 % measurement error sweep values
-% epsvec = [1e-1 2e-1 5e-1 1 5]; 
-epsvec = [2e-1];
+ epsvec = [1e-1 2e-1 5e-1 1 5]; 
 
 % define system
 n = 3;      % 3D system
@@ -69,7 +68,7 @@ lambdavals.lambdaend = 2;
 
 for i2 = 1:length(epsvec)
     
-    rng(9); %initialize random number generator to the same place so only the magnitude changes
+    rng(10); %initialize random number generator to the same place so only the magnitude changes
     
     eps = epsvec(i2); %set noise level for sweep
     
@@ -100,11 +99,12 @@ for i2 = 1:length(epsvec)
     [Xicomb, numcoeff, lambdavec] = multiD_Xilib(Thetalib, lambdavals);
     
     % Generate model library
-    clear abserror RMSE tB xB IC AIC_rel
+    %clear abserror RMSE tB xB IC AIC_rel
 
     for nn = 1:length(Xicomb)
         nn
         Xi = Xicomb{nn}
+        clear error RMSE1 savetB savexB
         [error, RMSE1, savetB, savexB] = validateXi(Xi, Thetalib, val, plottag);
         ICtemp = ICcalculations(error', numcoeff(nn), nval);
         abserror(:,nn) = error';

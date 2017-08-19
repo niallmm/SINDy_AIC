@@ -125,6 +125,7 @@ val.options= 0;
 clear abserror RMSE tB xB IC
 for nn = 1:length(Xicomb)
     Xi = Xicomb{nn};
+    clear error RMSE1 savetB savexB
     [error, RMSE1, savetB, savexB] = validateXi(Xi, Thetalib, val, plottag);
     ICtemp = ICcalculations(error', numcoeff(nn), numvalidation);
     abserror(:,nn) = error';

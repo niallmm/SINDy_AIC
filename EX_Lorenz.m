@@ -36,13 +36,14 @@ for i=1:length(x)
     dx(i,:) = lorenz(0,x(i,:),sigma,beta,rho);
 end
 % add noise to the state variables
-rng(6);
+rng(10);
 %NOTE: **** This is not the same noise instance as the simulation in the paper.
 % changing the noise initialization to other values sometimes
 %causes the AIC ranking to fail to score the correct model with the lowest
-%score (ie rng(9)). Sometimes there are other models that recieve supported
-% scores (as the example in the paper) We believe this is because the
+%score (ie rng(8), rng(9)). Sometimes there are many other models that recieve supported
+% scores (as is true for rng(6) intialization) We believe this is because the
 % validation time series extend beyond the Lyapunov time of the system (t = 5>1).
+
 x = x+eps*randn(size(x));
 
 %% pool Data  (i.e., build library of nonlinear time series)
@@ -90,6 +91,7 @@ val.options= options;
 clear abserror RMSE tB xB IC
 for nn = 1:length(Xicomb)
     Xi = Xicomb{nn};
+    clear error RMSE1 savetB savexB
     [error, RMSE1, savetB, savexB] = validateXi(Xi, Thetalib, val, plottag);
     ICtemp = ICcalculations(error', numcoeff(nn), numvalidation);
     abserror(:,nn) = error';
@@ -104,5 +106,5 @@ AIC_rel =cell2mat({IC.aic_c})-min(cell2mat({IC.aic_c}));
 % plot numterms vs AIC plot
 AnalyzeOutput
 
-rmpath('utils')
-rmpath('models')
+ rmpath('utils')
+ rmpath('models')

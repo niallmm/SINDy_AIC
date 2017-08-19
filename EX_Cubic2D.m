@@ -11,8 +11,6 @@ changeplot
 clear all, close all, clc
 
 filename ='Cubic2D';
-saveplotstag = 1; % save yes =1
-savetag = 1;
 plottag = 2; % for plotting measurements and cross validation plottag = 1
 % for output plots only plotag =2
 
@@ -85,6 +83,7 @@ val.options= options;
 clear abserror RMSE tB xB IC
 for nn = 1:length(Xicomb)
     Xi = Xicomb{nn};
+    clear error RMSE1 savetB savexB
     [error, RMSE1, savetB, savexB] = validateXi(Xi, Thetalib, val, plottag);
     ICtemp = ICcalculations(error', numcoeff(nn), numvalidation);
     abserror(:,nn) = error';

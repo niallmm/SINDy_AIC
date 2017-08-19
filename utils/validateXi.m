@@ -17,6 +17,7 @@ Xi
 end
 
 [nterms, ninits] = size(x0);
+
 for kk = 1:ninits % for each initial condition
     if iscell(tA)
         tvec = tA{kk};
@@ -76,18 +77,18 @@ for kk = 1:ninits % for each initial condition
         ind_tlast = find(tvec<=(max(sol.x)), 1, 'last');
         ind_tlast2 = find(sol.x<=(max(tvec)), 1, 'last');
         
-        if dydx > 1e6
+        if (abs(sol.y(end))>=1e5)||(dydx>1e6); %if the last point is larger than divergence criteria
             savetB{kk} = tvec;
             savexB{kk} = [sol.y(:,1)'; sol.y(end)*ones(length(tvec)-1,nterms)];
             ind_tlast = length(tvec);
-        elseif ind_tlast<ind_tlast2 % if the validation time-series
+        elseif tvec(ind_tlast)<sol.x(ind_tlast2) % if the validation time-series
             % is longer than the test model, evaluate the test model at
             % the validation time-series points, until the last time
             % point that is calculated by both
             savetB{kk} = tvec(1:ind_tlast);
             savexB{kk} = deval(sol, tvec(1:ind_tlast))';
             
-        elseif ind_tlast>=ind_tlast2 % if the test model results are
+        elseif tvec(ind_tlast)>=sol.x(ind_tlast2) % if the test model results are
             % longer than or equal to the validation time-series,
             % evaluate at validation points only
             savetB{kk} = tvec;
@@ -103,8 +104,8 @@ for kk = 1:ninits % for each initial condition
         
         % calculate errors
         if length(xAcomp) == tlength
-            abserror(kk) = sum(sum(abs(xAcomp-xBcomp))/tlength);
-            RMSE(kk) = sqrt(sum(sum(abs(xAcomp-xBcomp).^2)/tlength));
+            abserror(kk) = sum(sum(abs(xAcomp-xBcomp))/tlength/nterms);
+            RMSE(kk) = sqrt(sum(sum(abs(xAcomp-xBcomp).^2)/tlength/nterms));
         else
             error('model and validation time-series are not the same length')
         end
